@@ -1,3 +1,3 @@
 @echo off
-C:\Users\arthu\luvit.exe "main.lua"
+C:\path\to\luvit.exe "main.lua"
 pause
