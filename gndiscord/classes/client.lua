@@ -1,9 +1,11 @@
+local emitter = require( "core" ).Emitter
+
 local API = require( "../api" )
 local Gateway = require( "../gateway" )
 local User = require( "./user" )
 local Guild = require( "./guild" )
 
-local Client = {}
+local Client = emitter:new()
 
 function Client:new( options )
     local client = {}
@@ -16,7 +18,6 @@ function Client:new( options )
         client.channels = {}
         client.users = {}
 
-        client.events = {}
         
     return setmetatable( client, { __index = Client } )
 end
@@ -28,7 +29,7 @@ function Client:login( token )
     local function callReady()
         i = i + 1
         if i >= 2 then 
-            self:call( "ready" )
+            self:emit( "ready" )
         end
     end
 
@@ -48,20 +49,6 @@ function Client:login( token )
     end )
 
     Gateway:connect( self )
-end
-
-function Client:on( event, callback )
-    if not self.events[event] then self.events[event] = {} end
-
-    self.events[event][#self.events[event] + 1] = callback
-end
-
-function Client:call( event, ... )
-    if not self.events[event] then return end
-
-    for i, v in ipairs( self.events[event] ) do
-        v( ... )
-    end
 end
 
 return Client
