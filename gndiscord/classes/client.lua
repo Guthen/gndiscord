@@ -1,4 +1,5 @@
 local API = require( "../api" )
+local Gateway = require( "../gateway" )
 local User = require( "./user" )
 local Guild = require( "./guild" )
 
@@ -45,6 +46,8 @@ function Client:login( token )
 
         callReady()
     end )
+
+    Gateway:connect( self )
 end
 
 function Client:on( event, callback )

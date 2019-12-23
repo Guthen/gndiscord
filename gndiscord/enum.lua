@@ -8,6 +8,8 @@ return
     --  > API paths
     CLIENT_USER_PATH = "users/@me",
     CLIENT_GUILDS_PATH = "users/@me/guilds",
+    GATEWAY_PATH = "gateway",
+    GATEWAY_BOT_PATH = "gateway/bot",
 
     --  > Images paths (https://discordapp.com/developers/docs/reference#image-formatting)
     AVATAR_USER_PATH = "avatars/%s/%s.png",
