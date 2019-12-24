@@ -10,4 +10,9 @@ function User:new( tbl )
     return setmetatable( user, { __index = User } )
 end
 
+function User:toString()
+    return ( "<@%s>" ):format( self.id )
+end
+User.__tostring = User.toString
+
 return User

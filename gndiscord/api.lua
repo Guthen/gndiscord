@@ -14,6 +14,14 @@ local function parse_url( host )
 end
 
 local API = {}
+--  > Good HTTP response codes from https://discordapp.com/developers/docs/topics/opcodes-and-status-codes#http-http-response-codes
+local success_response = 
+{
+    ["200"] = true,
+    ["201"] = true,
+    ["204"] = true,
+    ["304"] = true,
+}
 
 function API:setClient( client )
     client.auth = ( "%s %s" ):format( client.type, client.token )
@@ -35,7 +43,17 @@ function API:get( host, callback )
             raw_data = raw_data .. data
         end )
         tbl:on( "end", function()
-            callback( json.parse( raw_data ), raw_data )
+            local data = json.parse( raw_data )
+            if data.message then
+                local code = data.message:sub( 1, 3 )
+                print( code, success_response[code] )
+                if not success_response[code] then
+                    print( "Getting a message while request to the API : " .. data.message )
+                    return
+                end
+            end
+
+            callback( data, raw_data )
         end )
     end )
 end

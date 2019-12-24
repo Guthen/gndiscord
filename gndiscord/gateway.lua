@@ -1,6 +1,7 @@
 local ws = require( "coro-websocket" )
 local json = require( "json" )
 local timer = require( "timer" )
+local los = require( "los" )
 
 local API = require( "./api" )
 
@@ -25,6 +26,8 @@ local op =
     BINARY = 2,
     CLOSE = 8,
 }
+
+--  # TODO: Accelerate heartbeat time to get informations faster (use timeout and recreate one once done)
 
 --  > get the len of non numerical tables
 local function table_count( tbl )
@@ -55,7 +58,7 @@ local function parse_payload( tbl )
     return json.decode( tbl.payload )
 end
 
-function Gateway:send( opcode, tbl )
+function Gateway:send( client, opcode, tbl )
     --  > if gateway is locked don't continue
     if self.locked then 
         print( "Gateway is locked, abort sending data.." )
@@ -78,27 +81,41 @@ function Gateway:send( opcode, tbl )
         p( "sent" )
     end )()
 
-    self:receive()
+    self:receive( client )
 end
 
-function Gateway:receive()
+function Gateway:receive( client )
     coroutine.wrap( function() 
         local message = self._read()
         p( "received", message )
 
-        --  > locking the gateway if discord want us to close connection
-        if message.opcode == op.CLOSE then
-            self.locked = true
-            print( "Gateway has been locked cause of opcode 8 : " .. message.payload )
+        if message then
+            local payload = parse_payload( message ) or {}
+            --  > locking the gateway if discord want us to close connection
+            if message.opcode == op.CLOSE then
+                self.locked = true
+                print( "Gateway has been locked cause of opcode 8 : " .. message.payload )
+                self:disconnect( client, true )
+            elseif payload.t then
+                client:handleGatewayEvent( payload )
+            end
+
+            if payload.s then
+                client.last_sequence = payload.s
+            end
+        else
+            self:disconnect( client, true )
         end
     end )()
 end
 
 function Gateway:connect( client )
+    if not client then return end
     --  > set the lock to determine sending data or not
     self.locked = false
 
     API:getGatewayBot( client, function( tbl )
+        client:debug( "Remaining %d sessions on %d, reset in %d minutes", tbl.session_start_limit.remaining, tbl.session_start_limit.total, tbl.session_start_limit.reset_after / 60000 )
         --  > format the options with the result of the API
         self.options = ws.parseUrl( tbl.url )
         self.options.pathname = "/" .. format_url_params( { v = client.version, encoding = "json" } )
@@ -110,42 +127,54 @@ function Gateway:connect( client )
             local payload = parse_payload( self._read() )
             if not ( payload.op == op.HELLO ) then return end 
 
+            self.locked = false
+
             --  > starting the heartbeat
             self.heartbeat_interval = payload.d.heartbeat_interval
-            timer.setInterval( self.heartbeat_interval, function()
-                self:heartbeat()
+            self.heartbeat_timer = timer.setInterval( self.heartbeat_interval, function()
+                self:heartbeat( client )
             end )
 
             --  > identify with the client
-            self:identify( client.token )
+            self:identify( client )
         end )()
     end )
 end
 
-function Gateway:disconnect()
-    self.locked = false
-
+function Gateway:disconnect( client, reconnect )
     self._write()
     self._read = nil
     self._write = nil
+
+    timer.clearInterval( self.heartbeat_timer )
+    self.heartbeat_timer = nil
+
+    --  > Reconnection
+    if reconnect then
+        client:debug( "Trying to resuming connection.." )
+        self:connect( client )
+    end
 end
 
-function Gateway:identify( token )
+function Gateway:identify( client )
     --  > identifying as wanted in https://discordapp.com/developers/docs/topics/gateway#identifying
-    self:send( op.IDENTIFY, { 
-        token = token, 
+    self:send( client, op.IDENTIFY, { 
+        token = client.token, 
         properties = 
         { 
-            ["$os"] = jit.os,
+            ["$os"] = los.type(),
             ["$browser"] = "gndiscord",
             ["$device"] = "gndiscord",
         },
+        --  > resuming
+        session_id = client.session_id,
+        seq = client.last_sequence,
     } )
 end
 
-function Gateway:heartbeat()
+function Gateway:heartbeat( client )
     --  > heartbeat as wanted in https://discordapp.com/developers/docs/topics/gateway#heartbeating
-    self:send( op.HEARTBEAT )
+    self:send( client, op.HEARTBEAT )
 end
 
 return Gateway
